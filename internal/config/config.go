@@ -54,13 +54,13 @@ type Config struct {
 
 	// ChecktypesURLs is a list of URLs pointing to checktypes
 	// catalogs.
-	ChecktypesURLs []string `yaml:"checktypesURLs"`
+	ChecktypesURLs []string `yaml:"catalogs"`
 
 	// Targets is the list of targets.
 	Targets []Target `yaml:"targets"`
 
 	// LogLevel is the logging level.
-	LogLevel slog.Level `yaml:"logLevel"`
+	LogLevel slog.Level `yaml:"log"`
 }
 
 // Parse returns a parsed Lava configuration given an [io.Reader].
