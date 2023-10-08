@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 
@@ -48,8 +49,10 @@ func TestGet_HTTP(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ts := httptest.NewServer(http.HandlerFunc(tt.handlerFunc))
 			defer ts.Close()
-
-			got, err := Get(ts.URL)
+			// Ignore the possible error parsing the url; the test server will
+			// always return a valid one.
+			u, _ := url.Parse(ts.URL)
+			got, err := Get(u)
 			if (err == nil) != tt.wantNilErr {
 				t.Fatalf("unexpected error: want nil: %v, got: %v", tt.wantNilErr, err)
 			}
@@ -64,45 +67,39 @@ func TestGet_HTTP(t *testing.T) {
 func TestGet_URL(t *testing.T) {
 	tests := []struct {
 		name    string
-		url     string
+		url     *url.URL
 		want    []byte
 		wantErr error
 	}{
 		{
 			name:    "file",
-			url:     "testdata/content.txt",
+			url:     mustParseURL("testdata/content.txt"),
 			want:    []byte("file with content\n"),
 			wantErr: nil,
 		},
 		{
 			name:    "empty file",
-			url:     "testdata/empty.txt",
+			url:     mustParseURL("testdata/empty.txt"),
 			want:    []byte{},
 			wantErr: nil,
 		},
 		{
 			name:    "file does not exist",
-			url:     "testdata/not_exist",
+			url:     mustParseURL("testdata/not_exist"),
 			want:    nil,
 			wantErr: os.ErrNotExist,
 		},
 		{
 			name:    "empty file path",
-			url:     "",
+			url:     mustParseURL(""),
 			want:    nil,
 			wantErr: os.ErrNotExist,
 		},
 		{
 			name:    "invalid scheme",
-			url:     "invalid://example.com/file.json",
+			url:     mustParseURL("invalid://example.com/file.json"),
 			want:    nil,
 			wantErr: ErrInvalidScheme,
-		},
-		{
-			name:    "invalid URL",
-			url:     "1http://example.com/file.json",
-			want:    nil,
-			wantErr: ErrInvalidURL,
 		},
 	}
 
@@ -118,4 +115,12 @@ func TestGet_URL(t *testing.T) {
 			}
 		})
 	}
+}
+
+func mustParseURL(rawURL string) *url.URL {
+	url, err := url.Parse(rawURL)
+	if err != nil {
+		panic(err)
+	}
+	return url
 }

@@ -15,6 +15,7 @@ require (
 	github.com/google/uuid v1.4.0
 	github.com/jroimartin/clilog v0.1.1
 	github.com/jroimartin/proxy v0.4.3
+	github.com/manelmontilla/toml v0.3.0
 	golang.org/x/mod v0.14.0
 	gopkg.in/yaml.v3 v3.0.1
 )
