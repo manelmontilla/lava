@@ -285,6 +285,8 @@ github.com/lestrrat-go/backoff v1.0.1/go.mod h1:5QVJKC49Q5yQvCrpup0ZqzDGHEO/O4H8
 github.com/lib/pq v0.0.0-20150723085316-0dad96c0b94f/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/magiconair/properties v1.5.3 h1:C8fxWnhYyME3n0klPOhVM7PtYUB3eV1W3DeFmN3j53Y=
 github.com/magiconair/properties v1.5.3/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
+github.com/manelmontilla/toml v0.3.0 h1:2ESBEsZjef1faA7Z+w1HH2kFF1zPzJvos88ehXLDqo4=
+github.com/manelmontilla/toml v0.3.0/go.mod h1:+my7iuT9ZrkmQeS8JE2BasCaIdewXCXNBVcqqpsTmO0=
 github.com/mattn/go-colorable v0.1.13 h1:fFA4WZxdEF4tXPZVKMLwD8oUnCTTo08duU7wxecdEvA=
 github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovkB8vQcUbaXHg=
 github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
