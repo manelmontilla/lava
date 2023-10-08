@@ -16,10 +16,6 @@ var (
 	// ErrInvalidScheme is returned by [Get] when the scheme of
 	// the provided URL is not supported.
 	ErrInvalidScheme = errors.New("invalid scheme")
-
-	// ErrInvalidURL is returned by [Get] when the provided URL is
-	// not valid.
-	ErrInvalidURL = errors.New("invalid URL")
 )
 
 // Get retrieves the contents from a given raw URL. It returns error
@@ -30,19 +26,14 @@ var (
 // does not specify a scheme, it is considered a file path. In the
 // case of http and https, the contents are retrieved issuing an HTTP
 // GET request.
-func Get(rawURL string) ([]byte, error) {
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidURL, err)
-	}
-
-	switch parsedURL.Scheme {
+func Get(u *url.URL) ([]byte, error) {
+	switch u.Scheme {
 	case "http", "https":
-		return getHTTP(parsedURL)
+		return getHTTP(u)
 	case "":
-		return os.ReadFile(parsedURL.Path)
+		return os.ReadFile(u.Path)
 	}
-	return nil, fmt.Errorf("%w: %v", ErrInvalidScheme, parsedURL.Scheme)
+	return nil, fmt.Errorf("%w: %v", ErrInvalidScheme, u.Scheme)
 }
 
 // getHTTP retrieves the contents of a given HTTP URL.
