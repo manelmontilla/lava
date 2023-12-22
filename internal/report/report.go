@@ -17,12 +17,14 @@ import (
 
 	"github.com/adevinta/lava/internal/config"
 	"github.com/adevinta/lava/internal/engine"
+	"github.com/adevinta/lava/internal/metrics"
 )
 
 // Writer represents a Lava report writer.
 type Writer struct {
 	prn         printer
 	w           io.WriteCloser
+	isStdout    bool
 	minSeverity config.Severity
 	exclusions  []config.Exclusion
 }
@@ -40,17 +42,20 @@ func NewWriter(cfg config.ReportConfig) (Writer, error) {
 	}
 
 	w := os.Stdout
+	isStdout := true
 	if cfg.OutputFile != "" {
 		f, err := os.Create(cfg.OutputFile)
 		if err != nil {
 			return Writer{}, fmt.Errorf("create file: %w", err)
 		}
 		w = f
+		isStdout = false
 	}
 
 	return Writer{
 		prn:         prn,
 		w:           w,
+		isStdout:    isStdout,
 		minSeverity: cfg.Severity,
 		exclusions:  cfg.Exclusions,
 	}, nil
@@ -65,14 +70,20 @@ func (writer Writer) Write(er engine.Report) (ExitCode, error) {
 	if err != nil {
 		return 0, fmt.Errorf("parse report: %w", err)
 	}
-	sum, err := mkSummary(vulns)
+
+	summ, err := mkSummary(vulns)
 	if err != nil {
 		return 0, fmt.Errorf("calculate summary: %w", err)
 	}
-	exitCode := writer.calculateExitCode(sum)
-	fvulns := writer.filterVulns(vulns)
 
-	if err = writer.prn.Print(writer.w, fvulns, sum); err != nil {
+	metrics.Collect("excluded_vulnerability_count", summ.excluded)
+	metrics.Collect("vulnerability_count", summ.count)
+
+	fvulns := writer.filterVulns(vulns)
+	status := mkStatus(er)
+	exitCode := writer.calculateExitCode(summ, status)
+
+	if err = writer.prn.Print(writer.w, fvulns, summ, status); err != nil {
 		return exitCode, fmt.Errorf("print report: %w", err)
 	}
 
@@ -81,8 +92,10 @@ func (writer Writer) Write(er engine.Report) (ExitCode, error) {
 
 // Close closes the [Writer].
 func (writer Writer) Close() error {
-	if err := writer.w.Close(); err != nil {
-		return fmt.Errorf("close writer: %w", err)
+	if !writer.isStdout {
+		if err := writer.w.Close(); err != nil {
+			return fmt.Errorf("close writer: %w", err)
+		}
 	}
 	return nil
 }
@@ -96,7 +109,6 @@ func (writer Writer) parseReport(er engine.Report) ([]vulnerability, error) {
 	for _, r := range er {
 		for _, vuln := range r.ResultData.Vulnerabilities {
 			severity := scoreToSeverity(vuln.Score)
-
 			excluded, err := writer.isExcluded(vuln, r.Target)
 			if err != nil {
 				return nil, fmt.Errorf("vulnerability exlusion: %w", err)
@@ -186,9 +198,15 @@ func (writer Writer) filterVulns(vulns []vulnerability) []vulnerability {
 // min severity configured in the writer. For that it makes use of the summary.
 //
 // See [ExitCode] for more information about exit codes.
-func (writer Writer) calculateExitCode(sum summary) ExitCode {
+func (writer Writer) calculateExitCode(summ summary, status []checkStatus) ExitCode {
+	for _, cs := range status {
+		if cs.Status != "FINISHED" {
+			return ExitCodeCheckError
+		}
+	}
+
 	for sev := config.SeverityCritical; sev >= writer.minSeverity; sev-- {
-		if sum.count[sev] > 0 {
+		if summ.count[sev] > 0 {
 			diff := sev - config.SeverityInfo
 			return ExitCodeInfo + ExitCode(diff)
 		}
@@ -206,7 +224,7 @@ type vulnerability struct {
 
 // A printer renders a Vulcan report in a specific format.
 type printer interface {
-	Print(w io.Writer, vulns []vulnerability, sum summary) error
+	Print(w io.Writer, vulns []vulnerability, summ summary, status []checkStatus) error
 }
 
 // scoreToSeverity converts a CVSS score into a [config.Severity].
@@ -243,7 +261,7 @@ func mkSummary(vulns []vulnerability) (summary, error) {
 		return summary{}, nil
 	}
 
-	sum := summary{
+	summ := summary{
 		count: make(map[config.Severity]int),
 	}
 	for _, vuln := range vulns {
@@ -251,12 +269,35 @@ func mkSummary(vulns []vulnerability) (summary, error) {
 			return summary{}, fmt.Errorf("invalid severity: %v", vuln.Severity)
 		}
 		if vuln.excluded {
-			sum.excluded++
+			summ.excluded++
 		} else {
-			sum.count[vuln.Severity]++
+			summ.count[vuln.Severity]++
 		}
 	}
-	return sum, nil
+	return summ, nil
+}
+
+// checkStatus represents the status of a check after the scan has
+// finished.
+type checkStatus struct {
+	Checktype string
+	Target    string
+	Status    string
+}
+
+// mkStatus returns the status of every check after the scan has
+// finished.
+func mkStatus(er engine.Report) []checkStatus {
+	var status []checkStatus
+	for _, r := range er {
+		cs := checkStatus{
+			Checktype: r.ChecktypeName,
+			Target:    r.Target,
+			Status:    r.Status,
+		}
+		status = append(status, cs)
+	}
+	return status
 }
 
 // ExitCode represents an exit code depending on the vulnerabilities found.
@@ -264,9 +305,10 @@ type ExitCode int
 
 // Exit codes depending on the maximum severity found.
 const (
-	ExitCodeCritical ExitCode = 104
-	ExitCodeHigh     ExitCode = 103
-	ExitCodeMedium   ExitCode = 102
-	ExitCodeLow      ExitCode = 101
-	ExitCodeInfo     ExitCode = 100
+	ExitCodeCheckError ExitCode = 3
+	ExitCodeInfo       ExitCode = 100
+	ExitCodeLow        ExitCode = 101
+	ExitCodeMedium     ExitCode = 102
+	ExitCodeHigh       ExitCode = 103
+	ExitCodeCritical   ExitCode = 104
 )
