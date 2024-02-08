@@ -342,7 +342,7 @@ func mkStream(target config.Target) (stream proxy.Stream, loopback bool, err err
 // [git-fetch documentation]: https://git-scm.com/docs/git-fetch#URLS
 func getTargetAddr(target config.Target) (string, error) {
 	switch target.AssetType {
-	case types.IP, types.Hostname:
+	case types.IP, types.Hostname, types.AWSAccount:
 		return target.Identifier, nil
 	case types.WebAddress:
 		u, err := url.Parse(target.Identifier)
