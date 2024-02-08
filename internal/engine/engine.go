@@ -329,6 +329,10 @@ func (eng Engine) beforeRun(params backend.RunParams, rc *docker.RunConfig, srv 
 	// Allow all checks to scan local assets.
 	rc.ContainerConfig.Env = setenv(rc.ContainerConfig.Env, "VULCAN_ALLOW_PRIVATE_IPS", "true")
 
+	if params.AssetType == string(types.AWSAccount) {
+		return nil
+	}
+
 	if params.AssetType == string(types.DockerImage) {
 		// Due to how reachability is defined by the Vulcan
 		// check SDK, local Docker images would be identified
