@@ -22,9 +22,10 @@ import (
 	report "github.com/adevinta/vulcan-report"
 	types "github.com/adevinta/vulcan-types"
 
-	"github.com/adevinta/lava/internal/checktype"
+	"github.com/adevinta/lava/internal/checktypes"
 	"github.com/adevinta/lava/internal/config"
 	"github.com/adevinta/lava/internal/dockerutil"
+	"github.com/adevinta/lava/internal/metrics"
 )
 
 // dockerInternalHost is the host used by the containers to access the
@@ -39,19 +40,21 @@ type Report map[string]report.Report
 // list is based on the provided checktypes and targets. These checks
 // are run by a Vulcan agent, which is configured using the specified
 // configuration.
-func Run(checktypesURLs []string, targets []config.Target, cfg config.AgentConfig) (Report, error) {
+func Run(checktypeURLs []string, targets []config.Target, cfg config.AgentConfig) (Report, error) {
 	srv, err := newTargetServer()
 	if err != nil {
 		return nil, fmt.Errorf("new server: %w", err)
 	}
 	defer srv.Close()
 
-	checktypes, err := checktype.NewCatalog(checktypesURLs)
+	catalog, err := checktypes.NewCatalog(checktypeURLs)
 	if err != nil {
 		return nil, fmt.Errorf("get checkype catalog: %w", err)
 	}
 
-	jl, err := generateJobs(checktypes, targets)
+	metrics.Collect("checktypes", catalog)
+
+	jl, err := generateJobs(catalog, targets)
 	if err != nil {
 		return nil, fmt.Errorf("create job list: %w", err)
 	}
@@ -144,14 +147,14 @@ func mkReport(rs *reportStore, srv *targetServer) (Report, error) {
 
 		tmAddrs := tm.Addrs()
 
-		slog.Info("applying target map", "check", checkID, "map", tm, "tmAddr", tmAddrs)
+		slog.Info("applying target map", "check", checkID, "tm", tm, "tmAddr", tmAddrs)
 
-		r.Target = tm.Old
+		r.Target = tm.OldIdentifier
 
 		var vulns []report.Vulnerability
 		for _, vuln := range r.Vulnerabilities {
-			vuln = vulnReplaceAll(vuln, tm.New, tm.Old)
-			vuln = vulnReplaceAll(vuln, tmAddrs.New, tmAddrs.Old)
+			vuln = vulnReplaceAll(vuln, tm.NewIdentifier, tm.OldIdentifier)
+			vuln = vulnReplaceAll(vuln, tmAddrs.NewIdentifier, tmAddrs.OldIdentifier)
 			vulns = append(vulns, vuln)
 		}
 		r.Vulnerabilities = vulns
@@ -249,7 +252,7 @@ func newAgentConfig(cfg config.AgentConfig) (agentconfig.Config, error) {
 	}
 
 	auths := []agentconfig.Auth{}
-	for _, r := range cfg.RegistriesAuth {
+	for _, r := range cfg.RegistryAuths {
 		auths = append(auths, agentconfig.Auth{
 			Server: r.Server,
 			User:   r.Username,
@@ -323,7 +326,8 @@ func beforeRun(params backend.RunParams, rc *docker.RunConfig, srv *targetServer
 	}
 	if tm, err := srv.Handle(params.CheckID, target); err == nil {
 		if !tm.IsZero() {
-			rc.ContainerConfig.Env = setenv(rc.ContainerConfig.Env, "VULCAN_CHECK_TARGET", tm.New)
+			rc.ContainerConfig.Env = setenv(rc.ContainerConfig.Env, "VULCAN_CHECK_TARGET", tm.NewIdentifier)
+			rc.ContainerConfig.Env = setenv(rc.ContainerConfig.Env, "VULCAN_CHECK_ASSET_TYPE", string(tm.NewAssetType))
 		}
 	} else {
 		slog.Warn("could not handle target", "target", target, "err", err)

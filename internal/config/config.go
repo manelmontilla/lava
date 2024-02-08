@@ -15,6 +15,8 @@ import (
 	types "github.com/adevinta/vulcan-types"
 	"golang.org/x/mod/semver"
 	"gopkg.in/yaml.v3"
+
+	"github.com/adevinta/lava/internal/assettypes"
 )
 
 var (
@@ -22,6 +24,10 @@ var (
 	// have a valid format according to the Semantic Versioning
 	// Specification.
 	ErrInvalidLavaVersion = errors.New("invalid Lava version")
+
+	// ErrNoChecktypeURLs means that no checktypes URLs were
+	// specified.
+	ErrNoChecktypeURLs = errors.New("no checktype catalogs")
 
 	// ErrNoTargets means that no targets were specified.
 	ErrNoTargets = errors.New("no targets")
@@ -56,21 +62,27 @@ type Config struct {
 	// ReportConfig is the configuration of the report.
 	ReportConfig ReportConfig `yaml:"report"`
 
-	// ChecktypesURLs is a list of URLs pointing to checktypes
+	// ChecktypeURLs is a list of URLs pointing to checktype
 	// catalogs.
-	ChecktypesURLs []string `yaml:"checktypesURLs"`
+	ChecktypeURLs []string `yaml:"checktypes"`
 
 	// Targets is the list of targets.
 	Targets []Target `yaml:"targets"`
 
 	// LogLevel is the logging level.
-	LogLevel slog.Level `yaml:"logLevel"`
+	LogLevel slog.Level `yaml:"log"`
 }
 
 // Parse returns a parsed Lava configuration given an [io.Reader].
 func Parse(r io.Reader) (Config, error) {
+	dec := yaml.NewDecoder(r)
+
+	// Ensure that the keys in the read data exist as fields in
+	// the struct being decoded into.
+	dec.KnownFields(true)
+
 	var cfg Config
-	if err := yaml.NewDecoder(r).Decode(&cfg); err != nil {
+	if err := dec.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
 	if err := cfg.validate(); err != nil {
@@ -91,28 +103,34 @@ func ParseFile(path string) (Config, error) {
 }
 
 // validate validates the Lava configuration.
-func (c *Config) validate() error {
+func (c Config) validate() error {
 	// Lava version validation.
 	if !semver.IsValid(c.LavaVersion) {
 		return ErrInvalidLavaVersion
+	}
+
+	// Checktype URLs validation.
+	if len(c.ChecktypeURLs) == 0 {
+		return ErrNoChecktypeURLs
 	}
 
 	// Targets validation.
 	if len(c.Targets) == 0 {
 		return ErrNoTargets
 	}
-	for _, target := range c.Targets {
-		if target.Identifier == "" {
-			return ErrNoTargetIdentifier
-		}
-		if target.AssetType == "" {
-			return ErrNoTargetAssetType
-		}
-		if !target.AssetType.IsValid() {
-			return fmt.Errorf("%w: %v", ErrInvalidAssetType, target.AssetType)
+	for _, t := range c.Targets {
+		if err := t.validate(); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// IsCompatible reports whether the configuration is compatible with
+// the specified version. An invalid semantic version string is
+// considered incompatible.
+func (c Config) IsCompatible(v string) bool {
+	return semver.Compare(v, c.LavaVersion) >= 0
 }
 
 // AgentConfig is the configuration passed to the vulcan-agent.
@@ -128,9 +146,9 @@ type AgentConfig struct {
 	// checktypes.
 	Vars map[string]string `yaml:"vars"`
 
-	// RegistriesAuth contains the credentials for a set of
+	// RegistryAuths contains the credentials for a set of
 	// container registries.
-	RegistriesAuth []RegistryAuth `yaml:"registriesAuth"`
+	RegistryAuths []RegistryAuth `yaml:"registries"`
 }
 
 // ReportConfig is the configuration of the report.
@@ -143,24 +161,43 @@ type ReportConfig struct {
 	Format OutputFormat `yaml:"format"`
 
 	// OutputFile is the path of the output file.
-	OutputFile string `yaml:"outputFile"`
+	OutputFile string `yaml:"output"`
 
 	// Exclusions is a list of findings that will be ignored. For
 	// instance, accepted risks, false positives, etc.
 	Exclusions []Exclusion `yaml:"exclusions"`
+
+	// Metrics is the file where the metrics will be written.
+	// If Metrics is an empty string or not specified in the yaml file, then
+	// the metrics report is not saved.
+	Metrics string `yaml:"metrics"`
 }
 
 // Target represents the target of a scan.
 type Target struct {
 	// Identifier is a string that identifies the target. For
-	// instance, a path, a URL, a Docker image, etc.
+	// instance, a path, a URL, a container image, etc.
 	Identifier string `yaml:"identifier"`
 
 	// AssetType is the asset type of the target.
-	AssetType types.AssetType `yaml:"assetType"`
+	AssetType types.AssetType `yaml:"type"`
 
 	// Options is a list of specific options for the target.
 	Options map[string]any `yaml:"options"`
+}
+
+// validate reports whether the target is a valid configuration value.
+func (t Target) validate() error {
+	if t.Identifier == "" {
+		return ErrNoTargetIdentifier
+	}
+	if t.AssetType == "" {
+		return ErrNoTargetAssetType
+	}
+	if !t.AssetType.IsValid() && !assettypes.IsValid(t.AssetType) {
+		return fmt.Errorf("%w: %v", ErrInvalidAssetType, t.AssetType)
+	}
+	return nil
 }
 
 // RegistryAuth contains the credentials for a container registry.
@@ -220,7 +257,7 @@ func (s Severity) String() string {
 }
 
 // MarshalText encode a [Severity] as a text.
-func (s *Severity) MarshalText() (text []byte, err error) {
+func (s Severity) MarshalText() (text []byte, err error) {
 	if !s.IsValid() {
 		return nil, ErrInvalidSeverity
 	}

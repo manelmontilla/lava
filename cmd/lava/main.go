@@ -1,6 +1,6 @@
 // Copyright 2023 Adevinta
 
-// Lava runs Vulcan checks locally.
+// Lava runs security checks locally.
 package main
 
 import (
@@ -13,12 +13,19 @@ import (
 
 	"github.com/adevinta/lava/cmd/lava/internal/base"
 	"github.com/adevinta/lava/cmd/lava/internal/help"
-	"github.com/adevinta/lava/cmd/lava/internal/run"
+	"github.com/adevinta/lava/cmd/lava/internal/initialize"
+	"github.com/adevinta/lava/cmd/lava/internal/scan"
+	"github.com/adevinta/lava/cmd/lava/internal/version"
 )
 
 func init() {
 	base.Commands = []*base.Command{
-		run.CmdRun,
+		scan.CmdScan,
+		initialize.CmdInit,
+		version.CmdVersion,
+
+		help.HelpLavaYAML,
+		help.HelpMetrics,
 	}
 }
 
@@ -41,6 +48,9 @@ func main() {
 	}
 
 	for _, cmd := range base.Commands {
+		if cmd.Run == nil {
+			continue
+		}
 		cmd.Flag.Usage = cmd.Usage
 		if cmd.Name() == args[0] {
 			cmd.Flag.Parse(args[1:]) //nolint:errcheck
@@ -53,6 +63,6 @@ func main() {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "lava: unknown command %q\nRun 'lava help' for usage.\n", args[0])
+	fmt.Fprintf(os.Stderr, "Unknown command %q. Run 'lava help'.\n", args[0])
 	os.Exit(2)
 }

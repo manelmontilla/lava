@@ -12,21 +12,18 @@ import (
 
 	"github.com/adevinta/vulcan-agent/jobrunner"
 	"github.com/adevinta/vulcan-agent/queue"
+	checkcatalog "github.com/adevinta/vulcan-check-catalog/pkg/model"
 	"github.com/google/uuid"
 
-	"github.com/adevinta/lava/internal/checktype"
+	"github.com/adevinta/lava/internal/assettypes"
+	"github.com/adevinta/lava/internal/checktypes"
 	"github.com/adevinta/lava/internal/config"
 )
 
 // generateJobs generates the jobs to be sent to the agent.
-func generateJobs(checktypes checktype.Catalog, targets []config.Target) ([]jobrunner.Job, error) {
-	checks, err := generateChecks(checktypes, targets)
-	if err != nil {
-		return nil, fmt.Errorf("generate checks: %w", err)
-	}
-
+func generateJobs(catalog checktypes.Catalog, targets []config.Target) ([]jobrunner.Job, error) {
 	var jobs []jobrunner.Job
-	for _, check := range checks {
+	for _, check := range generateChecks(catalog, targets) {
 		// Convert the options to a marshalled json string.
 		jsonOpts, err := json.Marshal(check.options)
 		if err != nil {
@@ -68,23 +65,19 @@ func generateJobs(checktypes checktype.Catalog, targets []config.Target) ([]jobr
 // check represents an instance of a checktype.
 type check struct {
 	id        string
-	checktype checktype.Checktype
+	checktype checkcatalog.Checktype
 	target    config.Target
 	options   map[string]interface{}
 }
 
 // generateChecks generates a list of checks combining a map of
-// checktypes and a list of targets. It returns an error if any of the
-// targets has an empty or invalid asset type.
-func generateChecks(checktypes checktype.Catalog, targets []config.Target) ([]check, error) {
+// checktypes and a list of targets.
+func generateChecks(catalog checktypes.Catalog, targets []config.Target) []check {
 	var checks []check
 	for _, t := range dedup(targets) {
-		if t.AssetType == "" || !t.AssetType.IsValid() {
-			return nil, fmt.Errorf("invalid target asset type: %v", t.AssetType)
-		}
-
-		for _, c := range checktypes {
-			if !c.Accepts(t.AssetType) {
+		for _, ct := range catalog {
+			at := assettypes.ToVulcan(t.AssetType)
+			if !checktypes.Accepts(ct, at) {
 				continue
 			}
 
@@ -92,17 +85,17 @@ func generateChecks(checktypes checktype.Catalog, targets []config.Target) ([]ch
 			// options take precedence for being more
 			// restrictive.
 			opts := make(map[string]interface{})
-			maps.Copy(opts, c.Options)
+			maps.Copy(opts, ct.Options)
 			maps.Copy(opts, t.Options)
 			checks = append(checks, check{
 				id:        uuid.New().String(),
-				checktype: c,
+				checktype: ct,
 				target:    t,
 				options:   opts,
 			})
 		}
 	}
-	return checks, nil
+	return checks
 }
 
 // dedup returns a deduplicated slice.

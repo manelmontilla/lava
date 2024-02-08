@@ -27,6 +27,9 @@ func TestParse(t *testing.T) {
 			file: "testdata/valid.yaml",
 			want: Config{
 				LavaVersion: "v1.0.0",
+				ChecktypeURLs: []string{
+					"checktypes.json",
+				},
 				Targets: []Target{
 					{
 						Identifier: "example.com",
@@ -46,6 +49,12 @@ func TestParse(t *testing.T) {
 			file:    "testdata/invalid_lava_version.yaml",
 			want:    Config{},
 			wantErr: ErrInvalidLavaVersion,
+		},
+		{
+			name:    "no checktypes URLs",
+			file:    "testdata/no_checktypes_urls.yaml",
+			want:    Config{},
+			wantErr: ErrNoChecktypeURLs,
 		},
 		{
 			name:    "no targets",
@@ -70,6 +79,9 @@ func TestParse(t *testing.T) {
 			file: "testdata/critical_severity.yaml",
 			want: Config{
 				LavaVersion: "v1.0.0",
+				ChecktypeURLs: []string{
+					"checktypes.json",
+				},
 				ReportConfig: ReportConfig{
 					Severity: SeverityCritical,
 				},
@@ -92,6 +104,9 @@ func TestParse(t *testing.T) {
 			file: "testdata/never_pull_policy.yaml",
 			want: Config{
 				LavaVersion: "v1.0.0",
+				ChecktypeURLs: []string{
+					"checktypes.json",
+				},
 				AgentConfig: AgentConfig{
 					PullPolicy: agentconfig.PullPolicyNever,
 				},
@@ -120,6 +135,9 @@ func TestParse(t *testing.T) {
 			file: "testdata/json_output_format.yaml",
 			want: Config{
 				LavaVersion: "v1.0.0",
+				ChecktypeURLs: []string{
+					"checktypes.json",
+				},
 				Targets: []Target{
 					{
 						Identifier: "example.com",
@@ -142,6 +160,9 @@ func TestParse(t *testing.T) {
 			file: "testdata/debug_log_level.yaml",
 			want: Config{
 				LavaVersion: "v1.0.0",
+				ChecktypeURLs: []string{
+					"checktypes.json",
+				},
 				Targets: []Target{
 					{
 						Identifier: "example.com",
@@ -182,6 +203,55 @@ func TestParse(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("configs mismatch (-want +got):\n%v", diff)
+			}
+		})
+	}
+}
+
+func TestConfig_IsCompatible(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		v    string
+		want bool
+	}{
+		{
+			name: "same version",
+			cfg:  Config{LavaVersion: "v1.0.0"},
+			v:    "v1.0.0",
+			want: true,
+		},
+		{
+			name: "lower version",
+			cfg:  Config{LavaVersion: "v1.1.0"},
+			v:    "1.0.0",
+			want: false,
+		},
+		{
+			name: "higher version",
+			cfg:  Config{LavaVersion: "v1.0.0"},
+			v:    "v1.1.0",
+			want: true,
+		},
+		{
+			name: "pre-release",
+			cfg:  Config{LavaVersion: "v0.0.0"},
+			v:    "v0.0.0-20231216173526-1150d51c5272",
+			want: false,
+		},
+		{
+			name: "invalid version",
+			cfg:  Config{LavaVersion: "v1.0.0"},
+			v:    "invalid",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.cfg.IsCompatible(tt.v)
+			if got != tt.want {
+				t.Errorf("unexpected result: %v, minimum required version: %v, v: %v", got, tt.cfg.LavaVersion, tt.v)
 			}
 		})
 	}
@@ -231,6 +301,7 @@ func TestSeverity_MarshalText(t *testing.T) {
 			wantErr:  ErrInvalidSeverity,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.severity.MarshalText()
