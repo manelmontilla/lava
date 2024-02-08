@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -259,7 +260,10 @@ func newAgentConfig(cfg config.AgentConfig) (agentconfig.Config, error) {
 			Pass:   r.Password,
 		})
 	}
-
+	vars, err := resolveEnvVars(cfg.Vars)
+	if err != nil {
+		return agentconfig.Config{}, err
+	}
 	acfg := agentconfig.Config{
 		Agent: agentconfig.AgentConfig{
 			ConcurrentJobs:         parallel,
@@ -272,7 +276,7 @@ func newAgentConfig(cfg config.AgentConfig) (agentconfig.Config, error) {
 			Listener: ln,
 		},
 		Check: agentconfig.CheckConfig{
-			Vars: cfg.Vars,
+			Vars: vars,
 		},
 		Runtime: agentconfig.RuntimeConfig{
 			Docker: agentconfig.DockerConfig{
@@ -287,6 +291,25 @@ func newAgentConfig(cfg config.AgentConfig) (agentconfig.Config, error) {
 		},
 	}
 	return acfg, nil
+}
+
+// resolveEnvVars checks if any value of a map of env vars has the form $name,
+// if does, it tries to replace the value of that env var with the value of the
+// process env var named "name". If the process env var does not exist it
+// returns an error. It leaves unchanged the rest of the environment variables.
+func resolveEnvVars(vars map[string]string) (map[string]string, error) {
+	resolved := map[string]string{}
+	for name, value := range vars {
+		if strings.HasPrefix(value, "$") {
+			pEnvVar, exists := os.LookupEnv(value[1:])
+			if !exists {
+				return nil, fmt.Errorf("no env var defined in the process for %s", name)
+			}
+			value = pEnvVar
+		}
+		resolved[name] = value
+	}
+	return resolved, nil
 }
 
 // beforeRun is called by the agent before creating each check
