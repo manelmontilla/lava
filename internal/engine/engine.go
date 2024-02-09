@@ -322,6 +322,7 @@ func beforeRun(params backend.RunParams, rc *docker.RunConfig, srv *targetServer
 	rc.ContainerConfig.Env = setenv(rc.ContainerConfig.Env, "VULCAN_ALLOW_PRIVATE_IPS", "true")
 
 	if params.AssetType == string(types.AWSAccount) {
+		rc.ContainerConfig.Env = setenv(rc.ContainerConfig.Env, "VULCAN_SKIP_REACHABILITY", "true")
 		return nil
 	}
 
