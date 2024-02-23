@@ -5,7 +5,9 @@
 package containers
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,11 +17,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/cli/cli/flags"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/tlsconfig"
 )
@@ -132,6 +136,47 @@ func NewDockerdClient(rt Runtime) (DockerdClient, error) {
 	return cli, nil
 }
 
+// ImageLabels returns the labels defined in an image.
+func (cli *DockerdClient) ImageLabels(image string) (map[string]string, error) {
+	ctx := context.Background()
+	filter := filters.KeyValuePair{
+		Key:   "reference",
+		Value: image,
+	}
+	options := types.ImageListOptions{
+		Filters: filters.NewArgs(filter),
+	}
+	infos, err := cli.ImageList(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	var labels = make(map[string]string)
+	for _, info := range infos {
+		for k, v := range info.Labels {
+			labels[k] = v
+		}
+	}
+	return labels, nil
+}
+
+// BuildImage builds an image given a tar and list of tags and labels.
+// Returns the log of the build process.
+func (cli *DockerdClient) BuildImage(ctx context.Context, tarFile io.Reader, tags []string, labels map[string]string) (string, error) {
+	buildOptions := types.ImageBuildOptions{
+		Tags:   tags,
+		Labels: labels,
+		Remove: true,
+	}
+
+	re, err := cli.ImageBuild(ctx, tarFile, buildOptions)
+	if err != nil {
+		return "", err
+	}
+
+	lines, err := readDockerOutput(re.Body)
+	return strings.Join(lines, "\n"), err
+}
+
 // Close closes the transport used by the client.
 func (cli *DockerdClient) Close() error {
 	return cli.APIClient.Close()
@@ -233,4 +278,42 @@ func (cli *DockerdClient) gateways(ctx context.Context, network string) ([]*net.
 		gws = append(gws, subnet)
 	}
 	return gws, nil
+}
+
+type dockerAPIResp struct {
+	Status      string               `json:"status,omitempty"`
+	ErrorDetail *types.ErrorResponse `json:"errorDetail,omitempty"`
+}
+
+func parseDockerAPIResultLine(line string) (imgResp *dockerAPIResp, err error) {
+	imgResp = &dockerAPIResp{}
+	err = json.Unmarshal([]byte(line), imgResp)
+	return
+}
+
+func readDockerOutput(r io.Reader) (lines []string, err error) {
+	reader := bufio.NewReader(r)
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				// Function will return error only if it's not a EOF.
+				err = nil
+			}
+			return lines, err
+		}
+
+		lines = append(lines, line)
+
+		msg, err := parseDockerAPIResultLine(line)
+		if err != nil {
+			return nil, err
+		}
+
+		if msg.ErrorDetail != nil {
+			err = errors.New(msg.ErrorDetail.Message)
+			return nil, err
+		}
+	}
 }

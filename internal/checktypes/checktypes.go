@@ -16,6 +16,7 @@ import (
 	types "github.com/adevinta/vulcan-types"
 
 	"github.com/adevinta/lava/internal/checktype/build"
+	"github.com/adevinta/lava/internal/containers"
 	"github.com/adevinta/lava/internal/urlutil"
 )
 
@@ -54,7 +55,7 @@ type Catalog map[string]checkcatalog.Checktype
 // consolidates them in a single catalog with all the checktypes
 // indexed by name. If a checktype is duplicated it is overridden with
 // the last one.
-func NewCatalog(urls []string) (Catalog, error) {
+func NewCatalog(rt containers.Runtime, urls []string) (Catalog, error) {
 	if len(urls) == 0 {
 		return nil, ErrMissingCatalog
 	}
@@ -71,11 +72,15 @@ func NewCatalog(urls []string) (Catalog, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		// If the url points to a directory, Lava considers the it points to
 		// the code of a checktype defined in that directory.
 		if isDir {
+			if err != nil {
+				return Catalog{}, err
+			}
 			code := build.Code(parsedURL.Path)
-			checktype, err := code.Build(context.Background())
+			checktype, err := code.Build(context.Background(), rt)
 			if err != nil {
 				return nil, err
 			}

@@ -12,9 +12,8 @@ import (
 	"time"
 
 	checkcatalog "github.com/adevinta/vulcan-check-catalog/pkg/model"
-	"github.com/docker/docker/client"
 
-	"github.com/adevinta/lava/internal/dockerutil"
+	"github.com/adevinta/lava/internal/containers"
 )
 
 const (
@@ -62,8 +61,8 @@ type Image struct {
 }
 
 // InspectImage returns the metadata about a checktype stored in an image.
-func InspectImage(cli client.APIClient, image string) (Image, error) {
-	labels, err := dockerutil.ImageLabels(cli, image)
+func InspectImage(cli containers.DockerdClient, image string) (Image, error) {
+	labels, err := cli.ImageLabels(image)
 	if err != nil {
 		return Image{}, fmt.Errorf("unable to read image labels: %w", err)
 	}
@@ -108,7 +107,7 @@ func InspectImage(cli client.APIClient, image string) (Image, error) {
 // NewImage builds a Docker image representing the checktype defined in the
 // specified directory using the specified checktype name. Returns the metadata
 // stored in the built image.
-func NewImage(ctx context.Context, cli client.APIClient, name, dir string, checktype string) (Image, error) {
+func NewImage(ctx context.Context, cli containers.DockerdClient, name, dir string, checktype string) (Image, error) {
 	manifestPath := path.Join(dir, ManifestFile)
 	manifestContent, err := os.ReadFile(manifestPath)
 	if os.IsNotExist(err) {
@@ -139,7 +138,7 @@ func NewImage(ctx context.Context, cli client.APIClient, name, dir string, check
 		lastModifiedTimeLabel: t,
 	}
 
-	_, err = dockerutil.BuildImage(ctx, cli, contents, []string{name}, labels)
+	_, err = cli.BuildImage(ctx, contents, []string{name}, labels)
 	if err != nil {
 		return Image{}, fmt.Errorf("unable to build image for checktype in dir %s: %w", dir, err)
 	}

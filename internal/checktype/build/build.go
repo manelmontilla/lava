@@ -18,9 +18,8 @@ import (
 	"time"
 
 	checkcatalog "github.com/adevinta/vulcan-check-catalog/pkg/model"
-	"github.com/docker/docker/client"
 
-	"github.com/adevinta/lava/internal/dockerutil"
+	"github.com/adevinta/lava/internal/containers"
 )
 
 // Code represents a dir containing the definition of a checktype.
@@ -29,9 +28,9 @@ type Code string
 // Build builds the code of a checktype defined in a directory. If the code was
 // not modified since the last time it was build locally, it doesn't rebuild
 // the check. Returns the data representing the checktype.
-func (c Code) Build(ctx context.Context) (checkcatalog.Checktype, error) {
+func (c Code) Build(ctx context.Context, rt containers.Runtime) (checkcatalog.Checktype, error) {
 	bLog := slog.Default().With("directory", c)
-	cli, err := dockerutil.NewAPIClient()
+	cli, err := containers.NewDockerdClient(rt)
 	if err != nil {
 		return checkcatalog.Checktype{}, fmt.Errorf("unable to get Docker client: %w", err)
 	}
@@ -64,7 +63,7 @@ func (c Code) Build(ctx context.Context) (checkcatalog.Checktype, error) {
 	return image.Checktype()
 }
 
-func (c Code) isModified(logger *slog.Logger, cli client.APIClient) (bool, error) {
+func (c Code) isModified(logger *slog.Logger, cli containers.DockerdClient) (bool, error) {
 	logger = logger.With("image", c)
 	image, err := InspectImage(cli, c.imageName())
 

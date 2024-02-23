@@ -53,7 +53,7 @@ func New(cfg config.AgentConfig, checktypeURLs []string) (eng Engine, err error)
 		return Engine{}, fmt.Errorf("new dockerd client: %w", err)
 	}
 
-	catalog, err := checktypes.NewCatalog(checktypeURLs)
+	catalog, err := checktypes.NewCatalog(rt, checktypeURLs)
 	if err != nil {
 		return Engine{}, fmt.Errorf("get checkype catalog: %w", err)
 	}

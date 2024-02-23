@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/adevinta/lava/internal/containers"
 	checkcatalog "github.com/adevinta/vulcan-check-catalog/pkg/model"
 	types "github.com/adevinta/vulcan-types"
 	"github.com/google/go-cmp/cmp"
@@ -122,7 +123,7 @@ func TestNewCatalog(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewCatalog(tt.urls)
+			got, err := NewCatalog(containers.RuntimeDockerd, tt.urls)
 
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("unexpected error: want: %v, got: %v", tt.wantErr, err)
